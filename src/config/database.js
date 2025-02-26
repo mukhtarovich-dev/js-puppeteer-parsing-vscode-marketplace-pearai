@@ -5,11 +5,27 @@ const path = require('path');
 // Define the path for the SQLite database file
 const dbPath = path.join(__dirname, '../../data/vscode_extensions.sqlite');
 
-// Create Sequelize instance with SQLite
+// Create Sequelize instance with SQLite and optimized settings
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: dbPath,
-  logging: false
+  logging: false,
+  pool: {
+    max: 25, // Maximum number of connection instances
+    min: 0,
+    acquire: 60000, // Maximum time (ms) that pool will try to get connection before throwing error
+    idle: 10000 // Maximum time (ms) that a connection can be idle before being released
+  },
+  dialectOptions: {
+    // SQLite specific options
+    pragma: {
+      'journal_mode': 'WAL', // Write-Ahead Logging for better concurrency
+      'synchronous': 'NORMAL', // Faster than FULL, still safe
+      'cache_size': -64000, // 64MB cache size (-ve number means kibibytes)
+      'foreign_keys': 1,
+      'temp_store': 'MEMORY' // Store temp tables in memory
+    }
+  }
 });
 
 // Test the connection
@@ -27,4 +43,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { sequelize, connectDB }; 
+module.exports = { sequelize, connectDB };
