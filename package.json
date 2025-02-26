@@ -2,12 +2,14 @@
   "name": "vscode-extension-scraper",
   "version": "1.0.0",
   "description": "VSCode Marketplace Extension Scraper",
-  "main": "src/cli.js",
+  "main": "src/cli/save-to-db.js",
   "bin": {
-    "vscode-scraper": "./src/cli.js"
+    "vscode-scraper-db": "./src/cli/save-to-db.js",
+    "vscode-scraper-files": "./src/cli/save-to-files.js"
   },
   "scripts": {
-    "start": "node src/cli.js \"C:\\Extensions\"",
+    "start:db": "node src/cli/save-to-db.js",
+    "start:files": "node src/cli/save-to-files.js \"C:\\Extensions\"",
     "test": "echo \"Error: no test specified\" && exit 1",
     "preinstall": "npm install -g puppeteer sequelize sqlite3 dotenv",
     "postinstall": "node scripts/setup.js"

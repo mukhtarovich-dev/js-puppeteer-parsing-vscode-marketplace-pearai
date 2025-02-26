@@ -16,29 +16,27 @@ class ExtensionScraper {
     });
   }
 
-  async scrapeExtensions(savePath) {
+  async scrapeExtensionsToDb() {
     try {
       const page = await this.browser.newPage();
       
-      await page.setDefaultNavigationTimeout(120000); // 60000 dan 120000 ga oshiramiz
-      await page.setDefaultTimeout(60000); // 30000 dan 60000 ga oshiramiz
+      await page.setDefaultNavigationTimeout(120000);
+      await page.setDefaultTimeout(60000);
       
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Turli xil saralash usullari bilan qidirish
       const sortOptions = [
-        'Installs', // Eng ko'p o'rnatilgan
-        'Rating', // Eng yuqori baholangan
-        'PublisherCount', // Eng ko'p nashriyotchilar
-        'UpdatedDate', // Eng so'nggi yangilangan
-        'ReleaseDate', // Eng so'nggi chiqarilgan
-        'Name' // Alifbo tartibida
+        'Installs',
+        'Rating',
+        'PublisherCount',
+        'UpdatedDate',
+        'ReleaseDate',
+        'Name'
       ];
       
       const processedUrls = new Set();
       let totalProcessed = 0;
       
-      // Har bir saralash usuli bilan qidirish
       for (const sortOption of sortOptions) {
         console.log(`\n=== ${sortOption} bo'yicha qidirilmoqda ===\n`);
         
@@ -53,13 +51,11 @@ class ExtensionScraper {
         await page.waitForSelector('.item-list-container', { timeout: 80000 });
         
         let scrollCount = 0;
-        const maxScrolls = 200; // 100 dan 200 ga oshiramiz
+        const maxScrolls = 200;
         let consecutiveEmptyScrolls = 0;
         
-        // Function to extract URLs from the current page view
         const extractUrls = async () => {
           return await page.evaluate(() => {
-            // Try multiple selectors to find all possible extensions
             const selectors = [
               '.item-grid-container .row-item a',
               '.item-list-container .row-item a',
@@ -71,7 +67,6 @@ class ExtensionScraper {
             
             const urls = new Set();
             
-            // Try each selector and collect unique URLs
             for (const selector of selectors) {
               const elements = document.querySelectorAll(selector);
               for (const element of elements) {
@@ -85,55 +80,45 @@ class ExtensionScraper {
           });
         };
         
-        // Initial extraction before scrolling
         let newUrls = await extractUrls();
         console.log(`Dastlabki URLlar soni: ${newUrls.length}`);
         
-        // Process initial batch of URLs
         for (const url of newUrls) {
           if (!processedUrls.has(url)) {
             processedUrls.add(url);
             console.log(`Murojaat qilinmoqda: ${url}`);
-            await this.saveExtensionContent(url, savePath);
+            await this.scrapeAndSaveToDb(url);
             totalProcessed++;
           }
         }
         
-        // Continue scrolling and processing until termination conditions are met
-        while (scrollCount < maxScrolls && consecutiveEmptyScrolls < 8) { // 5 dan 8 ga oshiramiz
+        while (scrollCount < maxScrolls && consecutiveEmptyScrolls < 8) {
           scrollCount++;
           console.log(`Sahifani pastga siljitish... (${scrollCount}/${maxScrolls})`);
           
-          // Scroll down once
           await page.evaluate(() => {
             window.scrollBy(0, window.innerHeight * 5);
           });
           
-          // Wait for new content to load
           await page.evaluate(() => {
             return new Promise(resolve => setTimeout(resolve, 5000));
           });
           
-          // Extract new URLs after scrolling
           newUrls = await extractUrls();
           
-          // Filter out already processed URLs
           const unprocessedUrls = newUrls.filter(url => !processedUrls.has(url));
           console.log(`Yangi topilgan URLlar: ${unprocessedUrls.length}`);
           
-          // If no new URLs found, increment empty scroll counter
           if (unprocessedUrls.length === 0) {
             consecutiveEmptyScrolls++;
             console.log(`Yangi URL topilmadi (${consecutiveEmptyScrolls}/8), davom etilmoqda...`);
           } else {
-            // Reset empty scroll counter if new URLs found
             consecutiveEmptyScrolls = 0;
             
-            // Process all new URLs before scrolling again
             for (const url of unprocessedUrls) {
               processedUrls.add(url);
               console.log(`Murojaat qilinmoqda: ${url}`);
-              await this.saveExtensionContent(url, savePath);
+              await this.scrapeAndSaveToDb(url);
               totalProcessed++;
             }
             
@@ -157,9 +142,8 @@ class ExtensionScraper {
     }
   }
 
-  async saveExtensionContent(url, savePath) {
+  async scrapeAndSaveToDb(url) {
     try {
-      // Extract identifier from URL
       const urlMatch = url.match(/itemName=([^&]+)/);
       const identifier = urlMatch ? urlMatch[1] : null;
       
@@ -168,7 +152,6 @@ class ExtensionScraper {
         return;
       }
       
-      // Check if extension already exists in database
       const Extension = require('../database/models/Extension');
       const existingExtension = await Extension.findOne({
         where: { identifier: identifier }
@@ -176,34 +159,28 @@ class ExtensionScraper {
       
       if (existingExtension) {
         console.log(`⚠️ Extension bazada mavjud: ${existingExtension.name} (${identifier})`);
-        return; // Skip processing if already exists
+        return;
       }
       
-      // Continue with scraping if extension doesn't exist
       const page = await this.browser.newPage();
       await page.goto(url, { waitUntil: 'networkidle0' });
       
-      // Extract all necessary data from the page based on the specified selectors
       const extensionData = await page.evaluate((pageUrl) => {
-        // Function to safely extract text from a selector
         const getText = (selector) => {
           const element = document.querySelector(selector);
           return element ? element.textContent.trim() : '';
         };
         
-        // Function to safely extract number from text
         const getNumber = (selector) => {
           const text = getText(selector);
           return text ? parseInt(text.replace(/[^0-9]/g, '')) : 0;
         };
         
-        // Function to extract array of items
         const getArray = (selector) => {
           const elements = document.querySelectorAll(selector);
           return Array.from(elements).map(el => el.textContent.trim());
         };
         
-        // Extract identifier from URL or page
         const getIdentifier = () => {
           const url = window.location.href;
           const match = url.match(/itemName=([^&]+)/);
@@ -229,29 +206,58 @@ class ExtensionScraper {
         };
       }, url);
       
-      const htmlContent = await page.evaluate(() => document.documentElement.outerHTML);
       await page.close();
       
+      await this.saveToDatabase(extensionData);
+      
+      console.log(`✅ Saqlandi: ${extensionData.name} (${url})`);
+      
+    } catch (error) {
+      console.error(`❌ Ma'lumotlarni saqlashda xatolik: ${url}`, error);
+    }
+  }
+
+  async saveExtensionContent(url, savePath) {
+    try {
+      const urlMatch = url.match(/itemName=([^&]+)/);
+      const identifier = urlMatch ? urlMatch[1] : null;
+      
+      if (!identifier) {
+        console.error(`❌ URL dan identifier ajratib olinmadi: ${url}`);
+        return;
+      }
+      
+      const page = await this.browser.newPage();
+      await page.goto(url, { waitUntil: 'networkidle0' });
+      
+      const htmlContent = await page.evaluate(() => document.documentElement.outerHTML);
+      
+      const Extension = require('../database/models/Extension');
+      const extension = await Extension.findOne({
+        where: { identifier: identifier }
+      });
+      
+      if (!extension) {
+        console.error(`❌ Extension bazada topilmadi: ${identifier}`);
+        return;
+      }
+      
       // Create folder name based on extension name with regex sanitization
-      // Replace forward slashes with spaces and other problematic characters with underscores
-      const folderName = extensionData.name
-        .replace(/\//g, ' ')  // Replace forward slashes with spaces
-        .replace(/[\\:*?"<>|]/g, '_');  // Replace other problematic characters with underscores
+      const folderName = extension.name
+        .replace(/\//g, ' ')
+        .replace(/[\\:*?"<>|]/g, '_');
       const folderPath = path.join(savePath, folderName);
       
       // Check if folder already exists
       try {
         const stats = await fs.stat(folderPath);
         if (stats.isDirectory()) {
-          console.log(`⚠️ Folder mavjud: ${folderPath}, faqat bazaga saqlanadi`);
-          // Save to SQLite without creating folder
-          await this.saveToDatabase(extensionData, folderPath);
+          console.log(`⚠️ Folder mavjud: ${folderPath}`);
           return;
         }
       } catch (err) {
-        // Folder doesn't exist, continue with creation
         if (err.code !== 'ENOENT') {
-          throw err; // Re-throw if it's not a "not found" error
+          throw err;
         }
       }
       
@@ -263,35 +269,35 @@ class ExtensionScraper {
       const urlFilePath = path.join(folderPath, `${folderName}.url`);
       await fs.writeFile(urlFilePath, `[InternetShortcut]\nURL=${url}\n`, 'utf8');
       
-      console.log(`✅ Saqlandi: ${extensionData.name} (${url})`);
+      // Update local_path in database
+      await extension.update({ local_path: folderPath });
+      
+      console.log(`✅ Saqlandi: ${extension.name}`);
       console.log(`🔗 URL fayl saqlandi: ${urlFilePath}`);
       
-      // Save to SQLite
-      await this.saveToDatabase(extensionData, folderPath);
+      await page.close();
       
     } catch (error) {
       console.error(`❌ Fayllarni saqlashda xatolik: ${url}`, error);
     }
   }
 
-  async saveToDatabase(extensionData, localPath) {
+  async saveToDatabase(extensionData) {
     try {
       const Extension = require('../database/models/Extension');
       
-      // Convert last_updated string to timestamp if possible
       let lastUpdated = null;
       if (extensionData.last_updated) {
         try {
           lastUpdated = new Date(extensionData.last_updated);
           if (isNaN(lastUpdated.getTime())) {
-            lastUpdated = null; // Set to null if parsing fails
+            lastUpdated = null;
           }
         } catch (e) {
           lastUpdated = null;
         }
       }
       
-      // Prepare data for SQLite
       const data = {
         name: extensionData.name || null,
         identifier: extensionData.identifier || null,
@@ -308,10 +314,9 @@ class ExtensionScraper {
         tags: extensionData.tags && extensionData.tags.length > 0 ? extensionData.tags : null,
         repository: extensionData.repository || null,
         license: extensionData.license || null,
-        local_path: localPath || null
+        local_path: null // Initially null, will be updated when files are saved
       };
       
-      // Ensure identifier is not null (required field)
       if (!data.identifier) {
         console.error(`❌ Identifier is missing for extension: ${extensionData.name}`);
         return null;
@@ -319,13 +324,11 @@ class ExtensionScraper {
       
       console.log('Attempting to save to SQLite:', data.name);
       
-      // Insert or update data in SQLite
       const [extension, created] = await Extension.findOrCreate({
         where: { identifier: data.identifier },
         defaults: data
       });
       
-      // If the record already exists, update it
       if (!created) {
         await extension.update(data);
       }
